@@ -19,6 +19,10 @@ import matplotlib as mpl
 from landlab.components import TaylorNonLinearDiffuser
 
 
+### TO DO:
+# Test evolution of 2 standard deviations of slopes 
+# DEM lighting, constant limits for hillshade
+
 def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN, D=0.001):
     fig, ax = plt.subplots(
     len(n_iter),4,
@@ -152,7 +156,7 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
         numeric_chars = ''.join(filter(str.isdigit, DEMname))
         DEMID = first_char + numeric_chars
 
-        txtname = DEMID + '_information_loss_analysis_linear.pdf'
+        txtname = 'Figures/' + DEMID + '_information_loss_analysis_linear.pdf'
         plt.savefig(txtname)
 
     return line_length, coeff_t, years_t       
@@ -284,28 +288,40 @@ def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save
         numeric_chars = ''.join(filter(str.isdigit, DEMname))
         DEMID = first_char + numeric_chars
 
-        txtname = DEMID + '_information_loss_analysis_nonlinear.pdf'
+        txtname =  'Figures/' + DEMID + '_information_loss_analysis_nonlinear.pdf'
         plt.savefig(txtname)
 
     return line_length, coeff_t, years_t
 
 def estimate_degradation_coefficient(slope_t0,slope_t,plot_counter,ax,nbins=20):
     cleaned_slope_t0 = slope_t0[~np.isnan(slope_t0)]
-    cleaned_slope_t = slope_t[~np.isnan(slope_t)]
-    cleaned_slope_t0 = cleaned_slope_t0[cleaned_slope_t0>0]
-    cleaned_slope_t =cleaned_slope_t[cleaned_slope_t>0]
-    counts_t0, bin_edges_t0 = np.histogram(cleaned_slope_t0, bins=nbins)
-    counts_t, bin_edges_t = np.histogram(cleaned_slope_t, bins=nbins)
-    max_bin_index_t0 = np.argmax(counts_t0)
-    max_bin_edge_t0 = (bin_edges_t0[max_bin_index_t0] + bin_edges_t0[max_bin_index_t0 + 1])/2
-    max_bin_index_t = np.argmax(counts_t)
-    max_bin_edge_t = (bin_edges_t[max_bin_index_t] + bin_edges_t[max_bin_index_t + 1])/2
-    ax[plot_counter,3].hist(cleaned_slope_t0, bins=nbins, color='slategrey', alpha=0.7)
-    ax[plot_counter,3].hist(cleaned_slope_t, bins=nbins, color='goldenrod', alpha=0.7)
-    ax[plot_counter,3].axvline(max_bin_edge_t0,color='slategrey',alpha=0.5)
-    ax[plot_counter,3].axvline(max_bin_edge_t,color='goldenrod',alpha=0.5)
-    info_loss= max_bin_edge_t0/max_bin_edge_t
+    cleaned_slope_t = slope_t[~np.isnan(slope_t)]   
+
+    percentile_threshold = 68
+    threshold_t0 = np.percentile(cleaned_slope_t0, percentile_threshold)
+    threshold_t = np.percentile(cleaned_slope_t, percentile_threshold)
+    
+    info_loss = threshold_t0/threshold_t
+    ax[plot_counter,3].hist(cleaned_slope_t0, bins=nbins, color='teal', histtype='step', alpha=0.9)
+    ax[plot_counter,3].hist(cleaned_slope_t, bins=nbins, color='darkorange',histtype='step', alpha=0.9)
     ax[plot_counter,3].set_title(r"$\phi$ = {:.2f}".format(info_loss),fontsize=8)
+    
+    # cleaned_slope_t0 = slope_t0[~np.isnan(slope_t0)]
+    # cleaned_slope_t = slope_t[~np.isnan(slope_t)]
+    # cleaned_slope_t0 = cleaned_slope_t0[cleaned_slope_t0>0]
+    # cleaned_slope_t =cleaned_slope_t[cleaned_slope_t>0]
+    # counts_t0, bin_edges_t0 = np.histogram(cleaned_slope_t0, bins=nbins)
+    # counts_t, bin_edges_t = np.histogram(cleaned_slope_t, bins=nbins)
+    # max_bin_index_t0 = np.argmax(counts_t0)
+    # max_bin_edge_t0 = (bin_edges_t0[max_bin_index_t0] + bin_edges_t0[max_bin_index_t0 + 1])/2
+    # max_bin_index_t = np.argmax(counts_t)
+    # max_bin_edge_t = (bin_edges_t[max_bin_index_t] + bin_edges_t[max_bin_index_t + 1])/2
+    # ax[plot_counter,3].hist(cleaned_slope_t0, bins=nbins, color='teal', histtype='step', alpha=0.9)
+    # ax[plot_counter,3].hist(cleaned_slope_t, bins=nbins, color='darkorange',histtype='step', alpha=0.9)
+    # ax[plot_counter,3].axvline(max_bin_edge_t0,color='teal',alpha=0.5)
+    # ax[plot_counter,3].axvline(max_bin_edge_t,color='darkorange',alpha=0.5)
+    # info_loss= max_bin_edge_t0/max_bin_edge_t
+    # ax[plot_counter,3].set_title(r"$\phi$ = {:.2f}".format(info_loss),fontsize=8)
     return info_loss
 
 def load_shapefiles_for_DEMs(DEM_dir, shapefile_dir):
