@@ -305,23 +305,6 @@ def estimate_degradation_coefficient(slope_t0,slope_t,plot_counter,ax,nbins=20):
     ax[plot_counter,3].hist(cleaned_slope_t0, bins=nbins, color='teal', histtype='step', alpha=0.9)
     ax[plot_counter,3].hist(cleaned_slope_t, bins=nbins, color='darkorange',histtype='step', alpha=0.9)
     ax[plot_counter,3].set_title(r"$\phi$ = {:.2f}".format(info_loss),fontsize=8)
-    
-    # cleaned_slope_t0 = slope_t0[~np.isnan(slope_t0)]
-    # cleaned_slope_t = slope_t[~np.isnan(slope_t)]
-    # cleaned_slope_t0 = cleaned_slope_t0[cleaned_slope_t0>0]
-    # cleaned_slope_t =cleaned_slope_t[cleaned_slope_t>0]
-    # counts_t0, bin_edges_t0 = np.histogram(cleaned_slope_t0, bins=nbins)
-    # counts_t, bin_edges_t = np.histogram(cleaned_slope_t, bins=nbins)
-    # max_bin_index_t0 = np.argmax(counts_t0)
-    # max_bin_edge_t0 = (bin_edges_t0[max_bin_index_t0] + bin_edges_t0[max_bin_index_t0 + 1])/2
-    # max_bin_index_t = np.argmax(counts_t)
-    # max_bin_edge_t = (bin_edges_t[max_bin_index_t] + bin_edges_t[max_bin_index_t + 1])/2
-    # ax[plot_counter,3].hist(cleaned_slope_t0, bins=nbins, color='teal', histtype='step', alpha=0.9)
-    # ax[plot_counter,3].hist(cleaned_slope_t, bins=nbins, color='darkorange',histtype='step', alpha=0.9)
-    # ax[plot_counter,3].axvline(max_bin_edge_t0,color='teal',alpha=0.5)
-    # ax[plot_counter,3].axvline(max_bin_edge_t,color='darkorange',alpha=0.5)
-    # info_loss= max_bin_edge_t0/max_bin_edge_t
-    # ax[plot_counter,3].set_title(r"$\phi$ = {:.2f}".format(info_loss),fontsize=8)
     return info_loss
 
 def load_shapefiles_for_DEMs(DEM_dir, shapefile_dir):
@@ -354,3 +337,14 @@ def func_line_length(x,a,b,c):
 
 def normalize_length(row,length_at_time_zero):
     return row['Length (m)'] / length_at_time_zero[row['DEM ID']]
+
+def estimate_degradation_coefficient_noplot(slope_t0,slope_t):
+    cleaned_slope_t0 = slope_t0[~np.isnan(slope_t0)]
+    cleaned_slope_t = slope_t[~np.isnan(slope_t)]   
+
+    percentile_threshold = 68
+    threshold_t0 = np.percentile(cleaned_slope_t0, percentile_threshold)
+    threshold_t = np.percentile(cleaned_slope_t, percentile_threshold)
+    
+    info_loss = threshold_t0/threshold_t
+    return info_loss
