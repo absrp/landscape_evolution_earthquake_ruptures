@@ -302,8 +302,8 @@ def estimate_degradation_coefficient(slope_t0,slope_t,plot_counter,ax,nbins=20):
     threshold_t = np.percentile(cleaned_slope_t, percentile_threshold)
     
     info_loss = threshold_t0/threshold_t
-    ax[plot_counter,3].hist(cleaned_slope_t0, bins=nbins, color='teal', histtype='step', alpha=0.9)
-    ax[plot_counter,3].hist(cleaned_slope_t, bins=nbins, color='darkorange',histtype='step', alpha=0.9)
+    ax[plot_counter,3].hist(cleaned_slope_t0, color='teal', histtype='step', alpha=0.9)
+    ax[plot_counter,3].hist(cleaned_slope_t, color='darkorange',histtype='step', alpha=0.9)
     ax[plot_counter,3].set_title(r"$\phi$ = {:.2f}".format(info_loss),fontsize=8)
     return info_loss
 
