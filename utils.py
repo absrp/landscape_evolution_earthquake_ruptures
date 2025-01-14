@@ -20,8 +20,11 @@ from landlab.components import TaylorNonLinearDiffuser
 
 
 ### TO DO:
+# Review all code
+# Clean up unused packages
 # Test evolution of 2 standard deviations of slopes 
 # DEM lighting, constant limits for hillshade
+# Make summary plots tighter 
 
 def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN, D=0.001):
     fig, ax = plt.subplots(
@@ -37,7 +40,8 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
     coeff_t = []
     years_t = []
     line_length = [] # for later plot
-
+    first_cbar_limits = None
+    
     # landlab grid from DEM
     DEM_name = 'DEMS/' + DEM + '.asc'
     mg, z = read_esri_ascii(DEM_name, name='topographic__elevation')
@@ -57,11 +61,10 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
             if p*dt<dt:
                 ValueError("The total time is smaller than the time-step!!")
         
-        
             # plot hillshade
             fig.sca(ax[plot_counter,0])
             hillshade = mg.calc_hillshade_at_node(elevs=z, alt=30., az=100.)
-            imshow_grid(mg,hillshade,cmap='gray') # plot_type, 'Hillshade'
+            imshow_grid(mg,hillshade,cmap='gray',vmin=0,vmax=1) # plot_type, 'Hillshade'
             ax[plot_counter,0].set_xticklabels([])
             ax[plot_counter,0].set_yticklabels([])
             ax[plot_counter,0].set_xticks([])
@@ -69,7 +72,8 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
             ax[plot_counter,0].set_ylabel('')
             ax[plot_counter,0].set_xlabel('')
             colorbar = plt.gci().colorbar
-            colorbar.remove()
+            #colorbar.remove()
+    
             
             slope_t = mg.calc_slope_at_node(z)
             
@@ -97,7 +101,7 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
             ax[plot_counter,3].set_yscale('log')  
             ax[plot_counter,3].set_xlim([0,1])  
             
-            # plot shapefile
+            # plot shapefile of fault traces
             gdf = shapefiles_input[plot_counter]
             gdf = gdf.to_crs(epsg=epsg_code)
             if gdf.empty:
@@ -147,8 +151,8 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
         rotation=None)
 
     ax[0,0].add_artist(scalebar)
-    plt.subplots_adjust(left=0.05, right=1, bottom=0.05, top=0.95, wspace=0.3, hspace=0.3)
-    plt.tight_layout()    
+    plt.subplots_adjust(left=0.05, right=0.06, bottom=0.05, top=0.5, wspace=0.1, hspace=0.1)
+    # plt.tight_layout()    
     
     if save_YN == 'Yes':
         DEMname = str(DEM)           
@@ -234,7 +238,7 @@ def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save
             ax[plot_counter,3].set_yscale('log')  
             ax[plot_counter,3].set_xlim([0,1])  
             
-            # plot shapefile
+            # plot shapefile of fault traces
             gdf = shapefiles_input[plot_counter]
             gdf = gdf.to_crs(epsg=epsg_code)
             if gdf.empty:
@@ -280,7 +284,7 @@ def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save
 
     ax[0,0].add_artist(scalebar)
     plt.subplots_adjust(left=0.05, right=1, bottom=0.05, top=0.95, wspace=0.3, hspace=0.3)
-    plt.tight_layout()    
+    # plt.tight_layout()    
     
     if save_YN == 'Yes':
         DEMname = str(DEM)           
