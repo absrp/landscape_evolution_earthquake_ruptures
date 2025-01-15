@@ -29,18 +29,17 @@ from landlab.components import TaylorNonLinearDiffuser
 def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN, D=0.001):
     fig, ax = plt.subplots(
     len(n_iter),4,
-    tight_layout=True,
-    figsize=(8,10),
+    tight_layout=False,
+    figsize=(5.5,9),
     dpi=300)
-    
     # set overall title
     fig.suptitle(str(DEM)) 
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.1, wspace=0.1, hspace=0.3)
     
     # to save in run 
     coeff_t = []
     years_t = []
     line_length = [] # for later plot
-    first_cbar_limits = None
     
     # landlab grid from DEM
     DEM_name = 'DEMS/' + DEM + '.asc'
@@ -71,9 +70,9 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
             ax[plot_counter,0].set_yticks([])
             ax[plot_counter,0].set_ylabel('')
             ax[plot_counter,0].set_xlabel('')
+            ax[plot_counter,0].set_aspect('equal')
             colorbar = plt.gci().colorbar
-            #colorbar.remove()
-    
+            colorbar.remove()
             
             slope_t = mg.calc_slope_at_node(z)
             
@@ -83,7 +82,7 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
             zchange = mg.node_vector_to_raster(z_diff, flip_vertically=True)
             im = ax[plot_counter,2].imshow(zchange,cmap='cividis',vmin=-0.8, vmax=0.8)
             if plot_counter == 0:
-                fig.colorbar(im, ax=ax[plot_counter,2],label='$\Delta$ z (m)',orientation='horizontal')
+                fig.colorbar(im, ax=ax[plot_counter,2],label='$\Delta$ z (m)',orientation='horizontal',fraction=0.036)
             colorbar = plt.gci().colorbar
             ax[plot_counter,2].set_yticks([])
             ax[plot_counter,2].set_xticks([])
@@ -93,13 +92,15 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
             # calculate degradation coefficient
             info_loss = estimate_degradation_coefficient(slope_t0,slope_t,plot_counter,ax)
             coeff_t.append(info_loss)    
-            ax[plot_counter,0].set_title('t = %.0f years' %(p*dt),fontsize=8)
+            ax[plot_counter,0].set_title('t = %.0f years' %(p*dt),fontsize=6)
             years_t.append(p*dt)
-            ax[plot_counter,3].set_xlabel('Slope',fontsize=8)
+            ax[plot_counter,3].set_xlabel('Slope',fontsize=6)
             ax[plot_counter,3].set_ylabel('')
             ax[plot_counter,3].set_yticks([])
             ax[plot_counter,3].set_yscale('log')  
             ax[plot_counter,3].set_xlim([0,1])  
+            if plot_counter ==1:
+                ax[plot_counter, 3].legend(fontsize=5)
             
             # plot shapefile of fault traces
             gdf = shapefiles_input[plot_counter]
@@ -112,10 +113,13 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
             ax[plot_counter,1].set_yticks([])
             ax[plot_counter,1].set_xlabel('')
             ax[plot_counter,1].set_xticks([])     
-            ax[plot_counter,1].set_aspect('equal')   
+            x_min, x_max = ax[plot_counter, 0].get_xlim()
+            y_min, y_max = ax[plot_counter, 0].get_ylim()
+            ax[plot_counter, 1].set_xlim(x_min, x_max)
+            ax[plot_counter, 1].set_ylim(y_min, y_max)    
             gdf['length'] = gdf.geometry.length
             total_length = gdf.geometry.length.sum()
-            ax[plot_counter,1].set_title(r"$L$ = {:.2f} m".format(total_length),fontsize=8)
+            ax[plot_counter,1].set_title(r"$L$ = {:.2f} m".format(total_length),fontsize=6)
             line_length.append(total_length)
             plot_counter += 1
         
@@ -151,9 +155,7 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
         rotation=None)
 
     ax[0,0].add_artist(scalebar)
-    plt.subplots_adjust(left=0.05, right=0.06, bottom=0.05, top=0.5, wspace=0.1, hspace=0.1)
-    # plt.tight_layout()    
-    
+
     if save_YN == 'Yes':
         DEMname = str(DEM)           
         first_char = DEMname[0]
@@ -168,7 +170,7 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
 def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save_YN, D=0.001):
     fig, ax = plt.subplots(
     len(n_iter),4,
-    tight_layout=True,
+    tight_layout=False,
     figsize=(8,10),
     dpi=300)
     
@@ -230,9 +232,9 @@ def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save
             # calculate degradation coefficient
             info_loss = estimate_degradation_coefficient(slope_t0,slope_t,plot_counter,ax)
             coeff_t.append(info_loss)    
-            ax[plot_counter,0].set_title('t = %.0f years' %(p*dt),fontsize=8)
+            ax[plot_counter,0].set_title('t = %.0f years' %(p*dt),fontsize=6)
             years_t.append(p*dt)
-            ax[plot_counter,3].set_xlabel('Slope',fontsize=8)
+            ax[plot_counter,3].set_xlabel('Slope',fontsize=6)
             ax[plot_counter,3].set_ylabel('')
             ax[plot_counter,3].set_yticks([])
             ax[plot_counter,3].set_yscale('log')  
@@ -306,9 +308,9 @@ def estimate_degradation_coefficient(slope_t0,slope_t,plot_counter,ax,nbins=20):
     threshold_t = np.percentile(cleaned_slope_t, percentile_threshold)
     
     info_loss = threshold_t0/threshold_t
-    ax[plot_counter,3].hist(cleaned_slope_t0, color='teal', histtype='step', alpha=0.9)
-    ax[plot_counter,3].hist(cleaned_slope_t, color='darkorange',histtype='step', alpha=0.9)
-    ax[plot_counter,3].set_title(r"$\phi$ = {:.2f}".format(info_loss),fontsize=8)
+    ax[plot_counter,3].hist(cleaned_slope_t0, color='teal', histtype='step', alpha=0.9,label='Initial slopes')
+    ax[plot_counter,3].hist(cleaned_slope_t, color='darkorange',histtype='step', alpha=0.9, label='Slopes at time t')
+    ax[plot_counter,3].set_title(r"$\phi$ = {:.2f}".format(info_loss),fontsize=6)
     return info_loss
 
 def load_shapefiles_for_DEMs(DEM_dir, shapefile_dir):
