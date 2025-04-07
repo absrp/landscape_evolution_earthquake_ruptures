@@ -10,10 +10,10 @@ import geopandas as gpd
 from scipy import stats
 from osgeo import gdal
 import glob
-from PIL import Image
-import matplotlib.cbook as cbook
-import scipy.optimize
-from scipy.optimize import curve_fit
+# from PIL import Image
+# import matplotlib.cbook as cbook
+# import scipy.optimize
+# from scipy.optimize import curve_fit
 from matplotlib_scalebar.scalebar import ScaleBar
 import matplotlib as mpl
 from landlab.components import TaylorNonLinearDiffuser
@@ -26,7 +26,7 @@ from landlab.components import TaylorNonLinearDiffuser
 # DEM lighting, constant limits for hillshade
 # Make summary plots tighter 
 
-def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN, D=0.001):
+def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN, initial_slopes, D=0.001):
     fig, ax = plt.subplots(
     len(n_iter),4,
     tight_layout=False,
@@ -128,6 +128,8 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
         dzdt = -mg.calc_flux_div_at_node(qs)
         z[mg.core_nodes] += dzdt[mg.core_nodes] * dt  
         
+    
+    initial_slopes.append(slope_t0)    
     scalebar = ScaleBar(
         0.5,
         units="m",
@@ -162,12 +164,12 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
         numeric_chars = ''.join(filter(str.isdigit, DEMname))
         DEMID = first_char + numeric_chars
 
-        txtname = 'Figures/' + DEMID + '_information_loss_analysis_linear.pdf'
+        txtname = 'Figures/' + DEMID + '_information_loss_analysis_linear.png'
         plt.savefig(txtname)
 
-    return line_length, coeff_t, years_t       
+    return line_length, coeff_t, years_t, initial_slopes       
     
-def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save_YN, D=0.001):
+def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save_YN, initial_slopes, D=0.001):
     fig, ax = plt.subplots(
     len(n_iter),4,
     tight_layout=False,
@@ -229,6 +231,7 @@ def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save
             slope_t = np.array(slope_t)
             slope_t0 = np.array(slope_t0)
             
+            
             # calculate degradation coefficient
             info_loss = estimate_degradation_coefficient(slope_t0,slope_t,plot_counter,ax)
             coeff_t.append(info_loss)    
@@ -257,7 +260,8 @@ def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save
             ax[plot_counter,1].set_title(r"$L$ = {:.2f} m".format(total_length),fontsize=8)
             line_length.append(total_length)
             plot_counter += 1
-        
+    
+    initial_slopes.append(slope_t0)    
     scalebar = ScaleBar(
         0.5,
         units="m",
@@ -294,10 +298,10 @@ def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save
         numeric_chars = ''.join(filter(str.isdigit, DEMname))
         DEMID = first_char + numeric_chars
 
-        txtname =  'Figures/' + DEMID + '_information_loss_analysis_nonlinear.pdf'
+        txtname =  'Figures/' + DEMID + '_information_loss_analysis_nonlinear.png'
         plt.savefig(txtname)
 
-    return line_length, coeff_t, years_t
+    return line_length, coeff_t, years_t, initial_slopes
 
 def estimate_degradation_coefficient(slope_t0,slope_t,plot_counter,ax,nbins=20):
     cleaned_slope_t0 = slope_t0[~np.isnan(slope_t0)]
