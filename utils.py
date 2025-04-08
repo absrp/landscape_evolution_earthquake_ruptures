@@ -18,6 +18,7 @@ from matplotlib_scalebar.scalebar import ScaleBar
 import matplotlib as mpl
 from landlab.components import TaylorNonLinearDiffuser
 import imageio
+from moviepy.editor import ImageSequenceClip
 
 ### TO DO:
 # Review all code
@@ -388,9 +389,12 @@ def create_evolution_gif(n_iter, DEM, shapefiles_input, epsg_code, D=0.001):
     qs = mg.add_zeros('sediment_flux', at='link')
 
     # Set consistent figure parameters
-    fig_width = 12
-    fig_height = 4
-    dpi = 300
+    fig_width = 16  # Increased from 12
+    fig_height = 5  # Increased from 4
+    dpi = 600  # Increased from 300 for higher resolution
+
+    # Create a more densely sampled grayscale colormap
+    grayscale_cmap = plt.cm.gray
 
     # run linear model over time
     frame_counter = 0
@@ -400,10 +404,10 @@ def create_evolution_gif(n_iter, DEM, shapefiles_input, epsg_code, D=0.001):
             fig, ax = plt.subplots(1, 3, figsize=(fig_width, fig_height), dpi=dpi)
             plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.1, wspace=0.1)
             
-            # plot hillshade
+            # plot hillshade with denser colormap
             hillshade = mg.calc_hillshade_at_node(elevs=z, alt=30., az=100.)
             plt.sca(ax[0])  # Set current axis
-            imshow_grid(mg, hillshade, cmap='gray', vmin=0, vmax=1)  # Plot hillshade
+            imshow_grid(mg, hillshade, cmap=grayscale_cmap, vmin=0, vmax=1)  # Plot hillshade with denser colormap
             # Remove colorbar
             colorbar = plt.gci().colorbar
             if colorbar is not None:
@@ -414,7 +418,7 @@ def create_evolution_gif(n_iter, DEM, shapefiles_input, epsg_code, D=0.001):
             ax[0].set_yticks([])
             ax[0].set_xlabel('')
             ax[0].set_ylabel('')
-            ax[0].set_title('t = %.0f years' %(p*dt), fontsize=14)
+            ax[0].set_title('t = %.0f years' %(p*dt), fontsize=16)  # Increased font size
             
             # plot elevation difference
             zfin = z[mg.nodes]
@@ -423,9 +427,9 @@ def create_evolution_gif(n_iter, DEM, shapefiles_input, epsg_code, D=0.001):
             plt.sca(ax[1])  # Set current axis
             im = plt.imshow(zchange, cmap='cividis', vmin=-0.8, vmax=0.8)
             # Add colorbar for all frames
-            cbar = fig.colorbar(im, ax=ax[1], label='$\Delta$ z (m)', orientation='horizontal', fraction=0.036)
-            cbar.ax.tick_params(labelsize=12)
-            cbar.set_label('$\Delta$ z (m)', size=14)
+            cbar = fig.colorbar(im, ax=ax[1], label=r'$\Delta$ z (m)', orientation='horizontal', fraction=0.036)
+            cbar.ax.tick_params(labelsize=14)  # Increased label size
+            cbar.set_label(r'$\Delta$ z (m)', size=16)  # Increased label size
             ax[1].set_xticklabels([])
             ax[1].set_yticklabels([])
             ax[1].set_xticks([])
@@ -435,15 +439,15 @@ def create_evolution_gif(n_iter, DEM, shapefiles_input, epsg_code, D=0.001):
             slope_t = mg.calc_slope_at_node(z)
             slope_t = np.array(slope_t)
             info_loss = estimate_degradation_coefficient(slope_t0, slope_t, 0, ax)
-            ax[2].set_xlabel('Slope', fontsize=14)
+            ax[2].set_xlabel('Slope', fontsize=16)  # Increased font size
             ax[2].set_ylabel('')
             ax[2].set_yticks([])
             ax[2].set_yscale('log')
             ax[2].set_xlim([0,1])
             # Add legend for all frames
-            ax[2].legend(fontsize=12)
+            ax[2].legend(fontsize=14)  # Increased font size
             # Update title font size
-            ax[2].set_title(r"$\phi$ = {:.2f}".format(info_loss), fontsize=14)
+            ax[2].set_title(r"$\phi$ = {:.2f}".format(info_loss), fontsize=16)  # Increased font size
             
             # Add scalebar to first frame
             if p == 0:
@@ -462,16 +466,26 @@ def create_evolution_gif(n_iter, DEM, shapefiles_input, epsg_code, D=0.001):
         dzdt = -mg.calc_flux_div_at_node(qs)
         z[mg.core_nodes] += dzdt[mg.core_nodes] * dt
     
-    # Create GIF using imageio
-    frames = []
-    for i in range(frame_counter):
-        frame_path = os.path.join(frames_dir, f'frame_{i:04d}.png')
-        frame = imageio.imread(frame_path)
-        frames.append(frame)
+    # Create MP4 using moviepy
+    from moviepy.editor import ImageSequenceClip
     
-    # Save GIF with 500ms duration per frame
-    gif_path = f'gifs_evolution/{DEM}_evolution.gif'
-    imageio.mimsave(gif_path, frames, duration=500)  # 500 milliseconds per frame
+    # Get all frame paths in order
+    frame_paths = [os.path.join(frames_dir, f'frame_{i:04d}.png') for i in range(frame_counter)]
+    
+    # Create video clip with higher frame rate
+    clip = ImageSequenceClip(frame_paths, fps=5)  # Increased from 2 to 5 fps
+    
+    # Save MP4 with higher quality settings
+    mp4_path = f'gifs_evolution/{DEM}_evolution.mp4'
+    clip.write_videofile(
+        mp4_path,
+        codec='libx264',
+        fps=5,  # Match the clip fps
+        bitrate='8000k',  # Higher bitrate for better quality
+        audio=False,
+        preset='slow',  # Slower encoding for better compression
+        threads=4  # Use multiple threads for faster encoding
+    )
     
     # Clean up frames
     for i in range(frame_counter):
