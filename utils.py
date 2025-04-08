@@ -402,7 +402,8 @@ def create_evolution_gif(n_iter, DEM, shapefiles_input, epsg_code, D=0.001):
             
             # plot hillshade
             hillshade = mg.calc_hillshade_at_node(elevs=z, alt=30., az=100.)
-            imshow_grid(mg, hillshade, cmap='gray', vmin=0, vmax=1, ax=ax[0])  # Plot hillshade directly on the axis
+            plt.sca(ax[0])  # Set current axis
+            imshow_grid(mg, hillshade, cmap='gray', vmin=0, vmax=1)  # Plot hillshade
             # Remove colorbar
             colorbar = plt.gci().colorbar
             if colorbar is not None:
