@@ -19,6 +19,7 @@ import matplotlib as mpl
 from landlab.components import TaylorNonLinearDiffuser
 import imageio
 from moviepy.editor import ImageSequenceClip
+from shapely.geometry import LineString, Point
 
 ### TO DO:
 # Review all code
@@ -26,6 +27,146 @@ from moviepy.editor import ImageSequenceClip
 # Test evolution of 2 standard deviations of slopes 
 # DEM lighting, constant limits for hillshade
 # Make summary plots tighter 
+
+def calculate_line_width(gdf):
+    """
+    Calculate the width of the fault zone by finding the maximum perpendicular distance
+    between parallel fault strands.
+    
+    Parameters:
+    -----------
+    gdf : GeoDataFrame
+        GeoDataFrame containing line geometries
+        
+    Returns:
+    --------
+    float
+        Width of fault zone, or 0.1 if no valid width found
+    tuple or None
+        Points defining the maximum width line, or None if no valid width found
+    """
+    if len(gdf) <= 1:
+        return 0.1, None
+  
+    # Get all line geometries      
+    lines = gdf.geometry.tolist()
+    
+    # Calculate overall strike direction from all segments
+    all_segments = []
+    for line in lines:
+        coords = np.array(line.coords)
+        for i in range(len(coords)-1):
+            segment = coords[i+1] - coords[i]
+            length = np.linalg.norm(segment)
+            if length > 0.1:
+                all_segments.append((segment/length, length))
+    
+    if not all_segments:
+        return 0.1, None
+    
+    # Calculate weighted average strike direction
+    segments, weights = zip(*all_segments)
+    segments = np.array(segments)
+    weights = np.array(weights)
+    strike_vec = np.average(segments, axis=0, weights=weights)
+    strike_vec = strike_vec / np.linalg.norm(strike_vec)
+    
+    # Calculate perpendicular direction
+    perp_vec = np.array([-strike_vec[1], strike_vec[0]])
+    
+    # Get bounding box
+    all_coords = np.vstack([np.array(line.coords) for line in lines])
+    bbox_min = np.min(all_coords, axis=0)
+    bbox_max = np.max(all_coords, axis=0)
+    bbox_size = bbox_max - bbox_min
+    max_search_dist = np.linalg.norm(bbox_size)  # Use full diagonal length
+    
+    max_width = 0
+    max_points = None
+    
+    # Sample points along all lines
+    sample_points = []
+    for line in lines:
+        # Sample every 2% of line length
+        distances = np.linspace(0, line.length, max(int(line.length * 50), 20))
+        for dist in distances:
+            point = line.interpolate(dist)
+            sample_points.append(np.array(point.coords[0]))
+    
+    # Try measuring width from each sample point
+    for base_point in sample_points:
+        # Create perpendicular test line
+        test_line_start = base_point - max_search_dist * perp_vec
+        test_line_end = base_point + max_search_dist * perp_vec
+        test_line = LineString([test_line_start, test_line_end])
+        
+        # Find intersections with all lines
+        intersections = []
+        for line in lines:
+            if test_line.intersects(line):
+                intersection = test_line.intersection(line)
+                if intersection.geom_type == 'Point':
+                    point = np.array(intersection.coords[0])
+                    dist = np.dot(point - base_point, perp_vec)
+                    # Reduce minimum separation threshold to 0.5 meters
+                    if abs(dist) > 0.5:
+                        intersections.append((dist, point))
+                elif intersection.geom_type == 'MultiPoint':
+                    for p in intersection.geoms:
+                        point = np.array(p.coords[0])
+                        dist = np.dot(point - base_point, perp_vec)
+                        if abs(dist) > 0.5:
+                            intersections.append((dist, point))
+        
+        # Need at least 2 intersections
+        if len(intersections) >= 2:
+            # Sort by distance along perpendicular direction
+            intersections.sort(key=lambda x: x[0])
+            
+            # Find points on opposite sides
+            min_dist = float('inf')
+            max_dist = float('-inf')
+            min_point = None
+            max_point = None
+            
+            for dist, point in intersections:
+                if dist < min_dist:
+                    min_dist = dist
+                    min_point = point
+                if dist > max_dist:
+                    max_dist = dist
+                    max_point = point
+            
+            width = max_dist - min_dist
+            
+            # Reduce minimum width threshold to 0.5 meter
+            if width > 0.5:
+                # Get local strike directions near intersection points
+                def get_local_strike(point, lines, search_radius=5.0):
+                    local_strikes = []
+                    for line in lines:
+                        closest_point = line.interpolate(line.project(Point(point)))
+                        if closest_point.distance(Point(point)) < search_radius:
+                            coords = np.array(line.coords)
+                            idx = np.argmin(np.linalg.norm(coords - point, axis=1))
+                            if idx < len(coords) - 1:
+                                segment = coords[idx + 1] - coords[idx]
+                                if np.linalg.norm(segment) > 0:
+                                    local_strikes.append(segment / np.linalg.norm(segment))
+                    return np.mean(local_strikes, axis=0) if local_strikes else None
+                
+                strike1 = get_local_strike(min_point, lines)
+                strike2 = get_local_strike(max_point, lines)
+                
+                if strike1 is not None and strike2 is not None:
+                    # Be more lenient with parallelism - allow up to 50 degrees
+                    parallel_threshold = 0.6
+                    if abs(np.dot(strike1, strike2)) > parallel_threshold:
+                        if width > max_width:
+                            max_width = width
+                            max_points = (min_point, max_point)
+    
+    return max_width if max_width > 0.1 else 0.1, max_points
 
 def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN, initial_slopes, D=0.001):
     fig, ax = plt.subplots(
@@ -41,6 +182,7 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
     coeff_t = []
     years_t = []
     line_length = [] # for later plot
+    line_width = [] # for later plot
     
     # landlab grid from DEM
     DEM_name = 'DEMS/' + DEM + '.asc'
@@ -54,7 +196,9 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
     dt = 0.2 * mg.dx * mg.dx / D # default time step is 50 years 
     qs = mg.add_zeros('sediment_flux', at='link')
 
-    # run linear model over time
+    # Store reference points from first time step
+    width_reference_points = None
+    
     plot_counter=0
     for p in range(max(n_iter)+1):
         if np.any(p == n_iter):
@@ -109,7 +253,7 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
             if gdf.empty:
                 print("The shapefile is empty.")
                 print(shapefiles_input[plot_counter])
-            gdf.plot(ax=ax[plot_counter, 1],linewidth=0.8, color='slategrey')
+            gdf.plot(ax=ax[plot_counter, 1], linewidth=0.8, color='slategrey')
             ax[plot_counter,1].set_ylabel('')
             ax[plot_counter,1].set_yticks([])
             ax[plot_counter,1].set_xlabel('')
@@ -117,11 +261,28 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
             x_min, x_max = ax[plot_counter, 0].get_xlim()
             y_min, y_max = ax[plot_counter, 0].get_ylim()
             ax[plot_counter, 1].set_xlim(x_min, x_max)
-            ax[plot_counter, 1].set_ylim(y_min, y_max)    
-            gdf['length'] = gdf.geometry.length
+            ax[plot_counter, 1].set_ylim(y_min, y_max)  
+            
+            # measure length and width of lines in shapefile at this time step   
             total_length = gdf.geometry.length.sum()
-            ax[plot_counter,1].set_title(r"$L$ = {:.2f} m".format(total_length),fontsize=6)
+            
+            # For first time step, find width and store reference points
+            if plot_counter == 0:
+                width, max_points = calculate_line_width(gdf)
+                width_reference_points = max_points
+            else:
+                # Use reference points for subsequent time steps
+                width, max_points = calculate_line_width(gdf)
+            
+            ax[plot_counter,1].set_title(r"$L$ = {:.2f} m, $W$ = {:.2f} m".format(total_length, width), fontsize=6)
             line_length.append(total_length)
+            line_width.append(width)
+            
+            # Plot the maximum width line if points were found
+            if max_points is not None:
+                p1, p2 = max_points
+                ax[plot_counter, 1].plot([p1[0], p2[0]], [p1[1], p2[1]], 'orange', alpha=0.6, linewidth=1)
+            
             plot_counter += 1
         
         g = mg.calc_grad_at_link(z)
@@ -168,7 +329,7 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
         txtname = 'Figures/' + DEMID + '_information_loss_analysis_linear.png'
         plt.savefig(txtname)
 
-    return line_length, coeff_t, years_t, initial_slopes       
+    return line_length, line_width, coeff_t, years_t, initial_slopes       
     
 def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save_YN, initial_slopes, D=0.001):
     fig, ax = plt.subplots(
@@ -250,16 +411,28 @@ def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save
             if gdf.empty:
                 print("The shapefile is empty.")
                 print(shapefiles_input[plot_counter])
-            gdf.plot(ax=ax[plot_counter, 1],linewidth=0.8, color='slategrey')
+            gdf.plot(ax=ax[plot_counter, 1], linewidth=0.8, color='slategrey')
             ax[plot_counter,1].set_ylabel('')
             ax[plot_counter,1].set_yticks([])
             ax[plot_counter,1].set_xlabel('')
             ax[plot_counter,1].set_xticks([])     
-            ax[plot_counter,1].set_aspect('equal')   
-            gdf['length'] = gdf.geometry.length
+            x_min, x_max = ax[plot_counter, 0].get_xlim()
+            y_min, y_max = ax[plot_counter, 0].get_ylim()
+            ax[plot_counter, 1].set_xlim(x_min, x_max)
+            ax[plot_counter, 1].set_ylim(y_min, y_max)  
+            
+            # measure length and width of lines in shapefile at this time step   
             total_length = gdf.geometry.length.sum()
-            ax[plot_counter,1].set_title(r"$L$ = {:.2f} m".format(total_length),fontsize=8)
+            width, max_points = calculate_line_width(gdf)
+            ax[plot_counter,1].set_title(r"$L$ = {:.2f} m, $W$ = {:.2f} m".format(total_length, width), fontsize=6)
             line_length.append(total_length)
+            line_width.append(width)
+            
+            # Plot the maximum width line if points were found
+            if max_points is not None:
+                p1, p2 = max_points
+                ax[plot_counter, 1].plot([p1[0], p2[0]], [p1[1], p2[1]], 'orange', alpha=0.6, linewidth=1)
+            
             plot_counter += 1
     
     initial_slopes.append(slope_t0)    
@@ -302,7 +475,7 @@ def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save
         txtname =  'Figures/' + DEMID + '_information_loss_analysis_nonlinear.png'
         plt.savefig(txtname)
 
-    return line_length, coeff_t, years_t, initial_slopes
+    return line_length, line_width, coeff_t, years_t, initial_slopes
 
 def estimate_degradation_coefficient(slope_t0, slope_t, plot_counter, ax, nbins=20):
     cleaned_slope_t0 = slope_t0[~np.isnan(slope_t0)]
@@ -498,3 +671,42 @@ def create_evolution_gif(n_iter, DEM, shapefiles_input, epsg_code, D=0.001):
         os.rmdir(frames_dir)
     
     return None
+
+def plot_shapefile_evolution(DEM, shapefiles_input, time_steps=[0, 150, 1000, 5000, 10000]):
+    """
+    Plot shapefiles at different time steps in a 1x5 subplot layout.
+    
+    Parameters:
+    -----------
+    DEM : str
+        Name of the DEM
+    shapefiles_input : list
+        List of shapefiles for the DEM
+    time_steps : list
+        List of time steps to plot (default: [0, 150, 1000, 5000, 10000])
+    """
+    # Create figure with 1x5 subplots
+    fig, axes = plt.subplots(1, 5, figsize=(15, 3), dpi=300)
+    plt.subplots_adjust(wspace=0.1)
+    
+    # Get shapefiles for this DEM
+    shapefiles = shapefiles_input[DEM]
+    
+    # Plot each time step
+    for i, (ax, time_step) in enumerate(zip(axes, time_steps)):
+        # Plot the shapefile
+        shapefiles[time_step].plot(ax=ax, color='coral', alpha=0.7)
+        
+        # Remove axes
+        ax.set_axis_off()
+        
+        # Add time label
+        if time_step == 0:
+            ax.set_title('Earthquake', fontsize=10)
+        else:
+            ax.set_title(f'{time_step} years', fontsize=10)
+    
+    # Add overall title
+    fig.suptitle(f'Scarp Evolution - {DEM}', fontsize=12, y=1.05)
+    
+    return fig, axes
