@@ -710,3 +710,116 @@ def plot_shapefile_evolution(DEM, shapefiles_input, time_steps=[0, 150, 1000, 50
     fig.suptitle(f'Scarp Evolution - {DEM}', fontsize=12, y=1.05)
     
     return fig, axes
+
+def load_shapefiles_for_time_steps(DEMs, time_steps, shapefile_dir='Shps/'):
+    """
+    Load shapefiles for specific DEMs and time steps.
+    
+    Parameters:
+    -----------
+    DEMs : list
+        List of DEM names
+    time_steps : list
+        List of time steps
+    shapefile_dir : str
+        Base directory containing shapefiles (default: 'Shps/')
+        
+    Returns:
+    --------
+    dict
+        Dictionary mapping DEM names to lists of shapefiles for each time step
+    """
+    shapefiles_data = {}
+    
+    for DEM in DEMs:
+        shapefiles_data[DEM] = []
+        dem_shapefile_dir = os.path.join(shapefile_dir, DEM + '/')
+        
+        for time_step in time_steps:
+            if time_step == 0:
+                shapefile_path = os.path.join(dem_shapefile_dir, 'FCR_0.shp')
+            else:
+                shapefile_path = os.path.join(dem_shapefile_dir, f'FCR_{time_step}.shp')
+            
+            if os.path.exists(shapefile_path):
+                shapefile = gpd.read_file(shapefile_path)
+                shapefiles_data[DEM].append(shapefile)
+            else:
+                print(f"Warning: Shapefile not found for {DEM} at time {time_step}")
+                shapefiles_data[DEM].append(None)
+    
+    return shapefiles_data
+
+def plot_dem_comparison(DEMs, shapefile_dir='Shps/', epsg_code=32611, time_steps=[0, 10000]):
+    """
+    Create a 2x3 plot showing DEM hillshades and shapefiles for two DEMs at different time steps.
+    
+    Parameters:
+    -----------
+    DEMs : list
+        List of two DEM names to plot (e.g., ['R8', 'E10'])
+    shapefile_dir : str
+        Directory containing shapefiles (default: 'shp')
+    epsg_code : int
+        EPSG code for coordinate system (default: 32611)
+    time_steps : list
+        List of time steps to plot (default: [0, 10000])
+    """
+    # Load shapefiles
+    shapefiles_data = load_shapefiles_for_time_steps(DEMs, time_steps, shapefile_dir)
+    
+    fig, axes = plt.subplots(2, 3, dpi=300)
+    plt.subplots_adjust(wspace=0.1, hspace=0.2)
+    
+    for i, DEM in enumerate(DEMs):
+        # Load DEM
+        DEM_name = 'DEMS/' + DEM + '.asc'
+        mg, z = read_esri_ascii(DEM_name, name='topographic__elevation')
+        mg.set_closed_boundaries_at_grid_edges(True, True, True, True)
+        
+        # Plot hillshade
+        hillshade = mg.calc_hillshade_at_node(elevs=z, alt=30., az=100.)
+        # Convert hillshade to 2D array for plotting and flip vertically
+        hillshade_2d = mg.node_vector_to_raster(hillshade, flip_vertically=True)
+        axes[i, 0].imshow(hillshade_2d, cmap='gray', vmin=0, vmax=1)
+        axes[i, 0].set_xticklabels([])
+        axes[i, 0].set_yticklabels([])
+        axes[i, 0].set_xticks([])
+        axes[i, 0].set_yticks([])
+        if DEM == 'R8':
+            c = 'teal'
+        else:
+            c = 'darkorange'
+        axes[i, 0].set_title(f'{DEM}', fontsize=10,c=c)
+        
+        # Plot shapefiles for each time step
+        for j, time_step in enumerate(time_steps):
+            shapefile = shapefiles_data[DEM][j]
+            if shapefile is not None:
+                shapefile = shapefile.to_crs(epsg=epsg_code)
+                shapefile.plot(ax=axes[i, j+1], color='dimgray',lw=1, alpha=0.7)
+            
+            # Set axis properties
+            axes[i, j+1].set_xticklabels([])
+            axes[i, j+1].set_yticklabels([])
+            axes[i, j+1].set_xticks([])
+            axes[i, j+1].set_yticks([])
+            axes[i, j+1].set_aspect('equal')
+            axes[i, j+1].spines['top'].set_visible(False)
+            axes[i, j+1].spines['right'].set_visible(False)
+            axes[i, j+1].spines['bottom'].set_visible(False)
+            axes[i, j+1].spines['left'].set_visible(False)
+            
+            # Set title with consistent padding
+            # if time_step == 0:
+            #     axes[i, j+1].set_title('Earthquake', fontsize=10, pad=15)
+            # else:
+            #     axes[i, j+1].set_title(f'{time_step} years', fontsize=10,pad=15)
+            
+            # # Match axis limits with hillshade
+            # x_min, x_max = axes[i, 0].get_xlim()
+            # y_min, y_max = axes[i, 0].get_ylim()
+            # axes[i, j+1].set_xlim(x_min, x_max)
+            # axes[i, j+1].set_ylim(y_min, y_max)
+    
+    return fig, axes
