@@ -10,16 +10,16 @@ import geopandas as gpd
 from scipy import stats
 from osgeo import gdal
 import glob
-# from PIL import Image
-# import matplotlib.cbook as cbook
-# import scipy.optimize
-# from scipy.optimize import curve_fit
 from matplotlib_scalebar.scalebar import ScaleBar
 import matplotlib as mpl
 from landlab.components import TaylorNonLinearDiffuser
 import imageio
 from moviepy.editor import ImageSequenceClip
 from shapely.geometry import LineString, Point
+from scipy.optimize import curve_fit
+from scipy.ndimage import rotate
+from scipy.signal import detrend
+from numpy.fft import fftfreq
 
 ### TO DO:
 # Review all code
@@ -47,7 +47,7 @@ def calculate_line_width(gdf):
     """
     if len(gdf) <= 1:
         return 0.1, None
-  
+
     # Get all line geometries      
     lines = gdf.geometry.tolist()
     
@@ -823,3 +823,376 @@ def plot_dem_comparison(DEMs, shapefile_dir='Shps/', epsg_code=32611, time_steps
             # axes[i, j+1].set_ylim(y_min, y_max)
     
     return fig, axes
+
+def func_fault_width(t, a, b):
+    """
+    Function to fit the evolution of fault zone width over time.
+    
+    Parameters:
+    -----------
+    t : array-like
+        Time values
+    a : float
+        Initial width parameter
+    b : float
+        Decay rate parameter
+        
+    Returns:
+    --------
+    array-like
+        Predicted fault zone width values
+    """
+    return a * np.exp(-b * t)
+
+def get_main_scarp_orientation(gdf):
+    """Calculate the dominant orientation of fault scarps from a GeoDataFrame.
+    
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        GeoDataFrame containing LineString geometries of fault scarps
+        
+    Returns
+    -------
+    float
+        Dominant orientation in radians from east (clockwise positive)
+    """
+    orientations = []
+    weights = []
+    
+    for line in gdf.geometry:
+        coords = np.array(line.coords)
+        for i in range(len(coords)-1):
+            dx = coords[i+1][0] - coords[i][0]
+            dy = coords[i+1][1] - coords[i][1]
+            segment_length = np.sqrt(dx**2 + dy**2)
+            angle = np.arctan2(dy, dx)
+            orientations.append(angle)
+            weights.append(segment_length)
+    
+    # Convert to numpy arrays
+    orientations = np.array(orientations)
+    weights = np.array(weights)
+    
+    # Find the dominant orientation using weighted circular mean
+    sin_sum = np.sum(weights * np.sin(orientations))
+    cos_sum = np.sum(weights * np.cos(orientations))
+    main_orientation = np.arctan2(sin_sum, cos_sum)
+    
+    return main_orientation
+
+def decompose_power_spectrum(power, orientation):
+    """
+    Decompose power spectrum into components parallel and perpendicular to scarp.
+    
+    Parameters:
+    -----------
+    power : ndarray
+        2D power spectrum
+    orientation : float
+        Angle in radians from east (clockwise positive)
+    
+    Returns:
+    --------
+    parallel_power, perp_power : ndarrays
+        Power components parallel and perpendicular to scarp
+    """
+    ny, nx = power.shape
+    y, x = np.ogrid[-ny//2:ny//2, -nx//2:nx//2]
+    
+    # Convert to polar coordinates
+    theta = np.arctan2(y, x)
+    r = np.sqrt(x*x + y*y)
+    
+    # Create masks for parallel (±30°) and perpendicular (±30°) components
+    angle_threshold = np.pi/6  # 30 degrees
+    
+    # Normalize angles to orientation
+    rel_angle = np.mod(theta - orientation + np.pi, 2*np.pi) - np.pi
+    
+    parallel_mask = np.abs(rel_angle) < angle_threshold
+    perp_mask = np.abs(np.mod(rel_angle + np.pi/2, 2*np.pi) - np.pi) < angle_threshold
+    
+    parallel_power = power * parallel_mask
+    perp_power = power * perp_mask
+    
+    return parallel_power, perp_power
+
+def rotate_grid(data, angle):
+    """
+    Rotate a 2D grid by the given angle (in radians) using scipy's rotate function.
+    Positive angle rotates counterclockwise.
+    """
+    from scipy.ndimage import rotate
+    # Convert to degrees for scipy rotate
+    angle_deg = np.degrees(angle)
+    # Rotate the grid
+    rotated = rotate(data, angle_deg, reshape=False, mode='reflect')
+    return rotated
+
+def compute_directional_power(power_spectrum, n_bins=50):
+    """
+    Compute power profiles along x and y directions by averaging.
+    """
+    # Average along columns (y-direction profile)
+    x_profile = np.mean(power_spectrum, axis=0)
+    # Average along rows (x-direction profile)
+    y_profile = np.mean(power_spectrum, axis=1)
+    
+    return x_profile, y_profile
+
+def create_perpendicular_transects(line_coords, spacing=5, length=50):
+    """
+    Create evenly spaced transects perpendicular to a line.
+    
+    Parameters:
+    -----------
+    line_coords : array-like
+        Coordinates of the line [(x1,y1), (x2,y2), ...]
+    spacing : float
+        Distance between transects along the line
+    length : float
+        Length of each transect (half on each side)
+        
+    Returns:
+    --------
+    transects : list of arrays
+        Each array contains coordinates of a transect
+    """
+    line_coords = np.array(line_coords)
+    transects = []
+    
+    # Compute cumulative distance along the line
+    dists = np.cumsum(np.sqrt(np.sum(np.diff(line_coords, axis=0)**2, axis=1)))
+    dists = np.insert(dists, 0, 0)
+    
+    # Create transects at regular intervals
+    sample_dists = np.arange(0, dists[-1], spacing)
+    
+    for dist in sample_dists:
+        # Find segment containing this distance
+        idx = np.searchsorted(dists, dist) - 1
+        if idx < 0:
+            idx = 0
+        
+        # Get local direction of line
+        if idx < len(line_coords) - 1:
+            vec = line_coords[idx+1] - line_coords[idx]
+        else:
+            vec = line_coords[idx] - line_coords[idx-1]
+            
+        vec = vec / np.linalg.norm(vec)
+        
+        # Compute perpendicular vector
+        perp_vec = np.array([-vec[1], vec[0]])
+        
+        # Interpolate position along line
+        if idx < len(line_coords) - 1:
+            seg_dist = dist - dists[idx]
+            seg_len = dists[idx+1] - dists[idx]
+            pos = line_coords[idx] + vec * (seg_dist/seg_len) * np.linalg.norm(line_coords[idx+1] - line_coords[idx])
+        else:
+            pos = line_coords[idx]
+        
+        # Create transect points
+        transect = np.vstack([
+            pos - perp_vec * length,
+            pos + perp_vec * length
+        ])
+        
+        transects.append(transect)
+    
+    return transects
+
+def extract_profile(grid, start_point, end_point, n_samples=100):
+    """
+    Extract values from a grid along a line between two points.
+    """
+    from scipy.interpolate import RegularGridInterpolator
+    
+    # Create interpolator for the grid
+    ny, nx = grid.shape
+    x = np.arange(nx)
+    y = np.arange(ny)
+    interpolator = RegularGridInterpolator((y, x), grid)
+    
+    # Create sample points along the line
+    t = np.linspace(0, 1, n_samples)
+    points = np.outer(1-t, start_point) + np.outer(t, end_point)
+    
+    # Get values
+    try:
+        values = interpolator(points)
+    except:
+        values = np.full(n_samples, np.nan)
+    
+    return values
+
+def plot_evolution_time_linear_spectrogram(n_iter, DEM, shapefiles_input, epsg_code, save_YN, initial_slopes, D=0.001):
+    # Create figure with 1 row, 5 columns (hillshade + 4 power spectra)
+    fig, ax = plt.subplots(1, 5, figsize=(15,3), dpi=300)
+    # Increase left margin and adjust spacing between subplots
+    plt.subplots_adjust(wspace=0.3, bottom=0.2, left=0.1, right=0.95)
+    
+    # Load DEM and setup
+    DEM_name = 'DEMS/' + DEM + '.asc'
+    mg, z = read_esri_ascii(DEM_name, name='topographic__elevation')
+    mg.set_closed_boundaries_at_grid_edges(True, True, True, True)
+    z_t0 = z.copy()
+    slope_t0 = mg.calc_slope_at_node(z)
+    
+    # Plot initial hillshade
+    hillshade = mg.calc_hillshade_at_node(elevs=z_t0, alt=30., az=100.)
+    hillshade_2d = mg.node_vector_to_raster(hillshade)
+    ax[0].imshow(hillshade_2d, cmap='gray', vmin=0, vmax=1)
+    ax[0].set_title(DEM, fontsize=8)
+    ax[0].set_xticks([])
+    ax[0].set_yticks([])
+    
+    # Model setup
+    dt = 0.2 * mg.dx * mg.dx / D
+    qs = mg.add_zeros('sediment_flux', at='link')
+    
+    # Storage - initialize as lists
+    coeff_t = []
+    years_t = []
+    line_length = []
+    line_width = []
+    
+    plot_counter = 0
+    selected_times = [0, 100, 1000, 10000]  # Times to plot
+    
+    # Variable to store y-limits for sharing
+    ylims = None
+    
+    for p in range(max(n_iter)+1):
+        if np.any(p == n_iter):  # Original time points for measurements
+            # Calculate line length and width
+            gdf = shapefiles_input[plot_counter].to_crs(epsg_code)
+            total_length = gdf.geometry.length.sum()
+            width, _ = calculate_line_width(gdf)
+            line_length.append(total_length)
+            line_width.append(width)
+            
+            # Calculate degradation coefficient
+            slope_t = mg.calc_slope_at_node(z)
+            info_loss = estimate_degradation_coefficient_noplot(slope_t0, slope_t)
+            coeff_t.append(info_loss)
+            years_t.append(p*dt)
+            
+            plot_counter += 1
+            
+        if p*dt in selected_times:  # Points for power spectrum plots
+            plot_idx = selected_times.index(int(p*dt))
+            
+            # Power spectrum calculation
+            z_grid = mg.node_vector_to_raster(z)
+            z_original = z_grid.copy()
+            ny, nx = z_grid.shape
+            step = mg.dx
+            
+            # Fit and remove plane
+            x, y = np.meshgrid(range(nx), range(ny))
+            A = np.vstack([x.ravel(), y.ravel(), np.ones(len(x.ravel()))]).T
+            fit = np.linalg.lstsq(A, z_grid.ravel(), rcond=None)[0]
+            z_grid = z_grid - (fit[0]*x + fit[1]*y + fit[2])
+            
+            # Apply Hanning window
+            hann_y = np.hanning(ny)
+            hann_x = np.hanning(nx)
+            hann_2d = np.sqrt(np.outer(hann_y, hann_x))
+            hann_weight = np.sum(hann_2d ** 2)
+            z_grid = z_grid * hann_2d
+            
+            # Optimize grid size for FFT
+            Lx = int(2**(np.ceil(np.log(np.max((nx, ny)))/np.log(2))))
+            Ly = Lx
+            
+            # Run FFT
+            fft = np.fft.fftn(z_grid, (Ly, Lx))
+            fft_shift = np.fft.fftshift(fft)
+            
+            # Zero out DC component
+            xc, yc = (Lx//2, Ly//2)
+            fft_shift[yc, xc] = 0
+            
+            # Calculate periodogram
+            p2d = np.abs(fft_shift)**2 / (Lx * Ly * hann_weight)
+            
+            # Calculate radial frequencies
+            x, y = np.meshgrid(range(Lx), range(Ly))
+            kx = x - xc
+            ky = y - yc
+            
+            # Calculate frequencies
+            fx = kx / (Lx * step)
+            fy = ky / (Ly * step)
+            f2d = np.sqrt(fx**2 + fy**2)
+            
+            # Create 1D spectrum
+            p1d = p2d[:, 0:xc+1].copy()
+            f1d = f2d[:, 0:xc+1].copy()
+            
+            # Set redundant columns to negative
+            f1d[yc:Ly, xc] = -1
+            
+            # Concatenate and sort
+            f1d = np.c_[f1d.ravel(), p1d.ravel()]
+            I = np.argsort(f1d[:, 0])
+            f1d = f1d[I, :]
+            
+            # Remove negative values
+            f1d = f1d[f1d[:, 0] > 0, :]
+            
+            # Extract components
+            p1d = 2 * f1d[:, 1]
+            f1d = f1d[:, 0]
+            
+            # Bin the data
+            bins = 20
+            f_bins = np.logspace(np.log10(f1d.min()), np.log10(f1d.max()), num=bins)
+            bin_med, edges, _ = stats.binned_statistic(f1d, p1d, statistic=np.nanmedian, bins=f_bins)
+            bin_center = edges[:-1] + np.diff(edges)/2
+            
+            # Clean bins
+            bin_center = bin_center[np.isfinite(bin_med)]
+            bin_med = bin_med[np.isfinite(bin_med)]
+            
+            # Plot power spectrum in the corresponding column (offset by 1 due to hillshade)
+            skip = 10  # Skip points for clarity
+            ax[plot_idx + 1].loglog(f1d[::skip], p1d[::skip], '.', c='gray', alpha=0.5, 
+                                  markersize=3, label="Power", rasterized=True)
+            ax[plot_idx + 1].loglog(bin_center, bin_med, 'o-', color='darkorange', markersize=3, alpha=1, 
+                                  label="Median", linewidth=1)
+            
+            # Format plot
+            ax[plot_idx + 1].set_xticklabels(["{:}\n[{:.0f}]".format(a, 1/a) for a in ax[plot_idx + 1].get_xticks()], fontsize=6)
+            if plot_idx == 0:  # Only set y labels for first power spectrum plot
+                ax[plot_idx + 1].set_yticklabels(["{:.0e}".format(a) for a in ax[plot_idx + 1].get_yticks()], fontsize=6)
+                ax[plot_idx + 1].set_ylabel('Mean Squared Amplitude (m$^2$)', fontsize=8, labelpad=10)  # Added labelpad
+                ylims = ax[plot_idx + 1].get_ylim()  # Store y-limits from first plot
+            else:
+                ax[plot_idx + 1].set_yticklabels([])
+                ax[plot_idx + 1].set_ylim(ylims)  # Apply same y-limits to other plots
+            ax[plot_idx + 1].set_title(f't = {int(p*dt)} years', fontsize=8)
+            
+            if plot_idx == 0:  # Only show legend on first power spectrum plot
+                ax[plot_idx + 1].legend(loc='lower left', fontsize=6)
+        
+        # Update topography
+        g = mg.calc_grad_at_link(z)
+        qs[mg.active_links] = -D * g[mg.active_links]
+        dzdt = -mg.calc_flux_div_at_node(qs)
+        z[mg.core_nodes] += dzdt[mg.core_nodes] * dt
+    
+    # Add common x-label
+    fig.text(0.5, 0.02, 'Frequency (m$^{-1}$) / [Wavelength (m)]', ha='center', fontsize=8)
+    
+    if save_YN == 'Yes':
+        plt.savefig(f'Figures/{DEM}_spectrogram.png', bbox_inches='tight')
+    
+    # Ensure initial_slopes is a list with the same length
+    initial_slopes = [slope_t0] * len(line_length)
+    
+    return line_length, line_width, coeff_t, years_t, initial_slopes
+
