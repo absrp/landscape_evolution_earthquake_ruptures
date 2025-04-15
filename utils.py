@@ -1196,3 +1196,113 @@ def plot_evolution_time_linear_spectrogram(n_iter, DEM, shapefiles_input, epsg_c
     
     return line_length, line_width, coeff_t, years_t, initial_slopes
 
+
+
+def plot_evolution_DEM_lines(n_iter, DEM, shapefiles_input, epsg_code, save_YN, D=0.001):
+    fig, ax = plt.subplots(
+    2,len(n_iter),
+    tight_layout=True,
+    dpi=300)
+    # set overall title
+    fig.suptitle(str(DEM)) 
+    line_length = []# place holder clean up later 
+    line_width = []
+    coeff_t = []
+    years_t = []
+    
+    # landlab grid from DEM
+    DEM_name = 'DEMS/' + DEM + '.asc'
+    mg, z = read_esri_ascii(DEM_name, name='topographic__elevation')
+    mg.set_closed_boundaries_at_grid_edges(True, True, True, True)
+    slope_t0 = mg.calc_slope_at_node(z)
+    slope_t0 = np.array(slope_t0)
+    z_t0 = z[mg.nodes]
+
+    # model set-up for 2D linear diffusion
+    dt = 0.2 * mg.dx * mg.dx / D # default time step is 50 years 
+    qs = mg.add_zeros('sediment_flux', at='link')
+
+    
+    plot_counter=0
+    for p in range(max(n_iter)+1):
+        if np.any(p == n_iter):
+            if p*dt<dt:
+                ValueError("The total time is smaller than the time-step!!")
+        
+            # plot hillshade
+            fig.sca(ax[0,plot_counter])
+            hillshade = mg.calc_hillshade_at_node(elevs=z, alt=30., az=100.)
+            imshow_grid(mg,hillshade,cmap='gray',vmin=0,vmax=1) # plot_type, 'Hillshade'
+            ax[0,plot_counter].set_xticklabels([])
+            ax[0,plot_counter].set_yticklabels([])
+            ax[0,plot_counter].set_xticks([])
+            ax[0,plot_counter].set_yticks([])
+            ax[0,plot_counter].set_ylabel('')
+            ax[0,plot_counter].set_xlabel('')
+            ax[0,plot_counter].set_aspect('equal')
+            colorbar = plt.gci().colorbar
+            colorbar.remove()
+            
+            gdf = shapefiles_input[plot_counter]
+            gdf = gdf.to_crs(epsg=epsg_code)
+
+            gdf.plot(ax=ax[1,plot_counter], linewidth=0.8, color='slategrey')
+            ax[1,plot_counter].set_ylabel('')
+            ax[1,plot_counter].set_yticks([])
+            ax[1,plot_counter].set_xlabel('')
+            ax[1,plot_counter].set_xticks([])     
+            x_min, x_max = ax[0,plot_counter].get_xlim()
+            y_min, y_max = ax[0,plot_counter].get_ylim()
+            ax[1,plot_counter].set_xlim(x_min, x_max)
+            ax[1,plot_counter].set_ylim(y_min, y_max)  
+            
+            plot_counter += 1
+        
+        g = mg.calc_grad_at_link(z)
+        qs[mg.active_links] = -D * g[mg.active_links]
+        dzdt = -mg.calc_flux_div_at_node(qs)
+        z[mg.core_nodes] += dzdt[mg.core_nodes] * dt  
+        
+            
+        line_length.append(0)# place holder clean up later 
+        line_width.append(0)
+        coeff_t.append(0)
+        years_t.append(0)
+    scalebar = ScaleBar(
+        0.5,
+        units="m",
+        dimension="si-length",
+        label=None,
+        length_fraction=None,
+        height_fraction=None,
+        width_fraction=None,
+        location=None,
+        pad=None,
+        border_pad=None,
+        sep=None,
+        frameon=None,
+        color=None,
+        box_color=None,
+        box_alpha=0,
+        scale_loc=None,
+        label_loc=None,
+        font_properties=None,
+        label_formatter=None,
+        scale_formatter=None,
+        fixed_value=None,
+        fixed_units=None,
+        animated=False,
+        rotation=None)
+
+    ax[0,0].add_artist(scalebar)
+
+    if save_YN == 'Yes':
+        DEMname = str(DEM)           
+        first_char = DEMname[0]
+        numeric_chars = ''.join(filter(str.isdigit, DEMname))
+        DEMID = first_char + numeric_chars
+
+        txtname = 'Figures/' + DEMID + '_DEM_lines_evolution.png'
+        plt.savefig(txtname)  
+
+    return line_length, line_width, years_t, coeff_t
