@@ -14,12 +14,13 @@ from matplotlib_scalebar.scalebar import ScaleBar
 import matplotlib as mpl
 from landlab.components import TaylorNonLinearDiffuser
 import imageio
-from moviepy.editor import ImageSequenceClip
+#from moviepy.editor import ImageSequenceClip
 from shapely.geometry import LineString, Point
 from scipy.optimize import curve_fit
 from scipy.ndimage import rotate
 from scipy.signal import detrend
 from numpy.fft import fftfreq
+import matplotlib.gridspec as gridspec
 
 ### TO DO:
 # Review all code
@@ -172,11 +173,11 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
     fig, ax = plt.subplots(
     len(n_iter),4,
     tight_layout=False,
-    figsize=(5.5,9),
+    figsize=(5,9),
     dpi=300)
     # set overall title
     fig.suptitle(str(DEM)) 
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.1, wspace=0.1, hspace=0.3)
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.1, wspace=0.05, hspace=0.2)
     
     # to save in run 
     coeff_t = []
@@ -244,8 +245,10 @@ def plot_evolution_time_linear(n_iter, DEM, shapefiles_input, epsg_code, save_YN
             ax[plot_counter,3].set_yticks([])
             ax[plot_counter,3].set_yscale('log')  
             ax[plot_counter,3].set_xlim([0,1])  
-            if plot_counter ==1:
+            if plot_counter == 1:
                 ax[plot_counter, 3].legend(fontsize=5)
+
+
             
             # plot shapefile of fault traces
             gdf = shapefiles_input[plot_counter]
@@ -335,7 +338,7 @@ def plot_evolution_time_nonlinear(n_iter, DEM, shapefiles_input, epsg_code, save
     fig, ax = plt.subplots(
     len(n_iter),4,
     tight_layout=False,
-    figsize=(8,10),
+    figsize=(7.5,10),
     dpi=300)
     
     # set overall title
@@ -639,38 +642,38 @@ def create_evolution_gif(n_iter, DEM, shapefiles_input, epsg_code, D=0.001):
         dzdt = -mg.calc_flux_div_at_node(qs)
         z[mg.core_nodes] += dzdt[mg.core_nodes] * dt
     
-    # Create MP4 using moviepy
-    from moviepy.editor import ImageSequenceClip
-    
-    # Get all frame paths in order
-    frame_paths = [os.path.join(frames_dir, f'frame_{i:04d}.png') for i in range(frame_counter)]
-    
-    # Create video clip with higher frame rate
-    clip = ImageSequenceClip(frame_paths, fps=5)  # Increased from 2 to 5 fps
-    
-    # Save MP4 with higher quality settings
-    mp4_path = f'gifs_evolution/{DEM}_evolution.mp4'
-    clip.write_videofile(
-        mp4_path,
-        codec='libx264',
-        fps=5,  # Match the clip fps
-        bitrate='8000k',  # Higher bitrate for better quality
-        audio=False,
-        preset='slow',  # Slower encoding for better compression
-        threads=4  # Use multiple threads for faster encoding
-    )
-    
-    # Clean up frames
-    for i in range(frame_counter):
-        frame_path = os.path.join(frames_dir, f'frame_{i:04d}.png')
-        if os.path.exists(frame_path):
-            os.remove(frame_path)
-    
-    # Remove frames directory if it exists and is empty
-    if os.path.exists(frames_dir) and not os.listdir(frames_dir):
-        os.rmdir(frames_dir)
-    
-    return None
+#    # Create MP4 using moviepy
+#    from moviepy.editor import ImageSequenceClip
+#    
+#    # Get all frame paths in order
+#    frame_paths = [os.path.join(frames_dir, f'frame_{i:04d}.png') for i in range(frame_counter)]
+#    
+#    # Create video clip with higher frame rate
+#    clip = ImageSequenceClip(frame_paths, fps=5)  # Increased from 2 to 5 fps
+#    
+#    # Save MP4 with higher quality settings
+#    mp4_path = f'gifs_evolution/{DEM}_evolution.mp4'
+#    clip.write_videofile(
+#        mp4_path,
+#        codec='libx264',
+#        fps=5,  # Match the clip fps
+#        bitrate='8000k',  # Higher bitrate for better quality
+#        audio=False,
+#        preset='slow',  # Slower encoding for better compression
+#        threads=4  # Use multiple threads for faster encoding
+#    )
+#    
+#    # Clean up frames
+#    for i in range(frame_counter):
+#        frame_path = os.path.join(frames_dir, f'frame_{i:04d}.png')
+#        if os.path.exists(frame_path):
+#            os.remove(frame_path)
+#    
+#    # Remove frames directory if it exists and is empty
+#    if os.path.exists(frames_dir) and not os.listdir(frames_dir):
+#        os.rmdir(frames_dir)
+#    
+#    return None
 
 def plot_shapefile_evolution(DEM, shapefiles_input, time_steps=[0, 150, 1000, 5000, 10000]):
     """
