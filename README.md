@@ -42,7 +42,7 @@ Includes option to save the outputs as pdf files for each DEM in a csv file comp
     - [ ] Contains functions required to run the Jupyter Notebooks above. 
 
 ## Data requirements
-The following directories and contained datasets are required to run the scripts above and can be accessed at [Zenodo repository](https://zenodo.org/records/10652348)]
+The following directories and contained datasets are required to run the scripts above and can be accessed at [Zenodo repository](https://zenodo.org/records/10652348)
 
 - [ ] DEMs
   Subset DEMs from the Ridgecrest and El Mayor-Cucapah lidar datasets (R and E codes indicate event). Required to run information_loss_bulk.ipynb and comparison_linear_vs_nonlinear_diffusion.ipynb
