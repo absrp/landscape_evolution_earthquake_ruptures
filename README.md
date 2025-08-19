@@ -19,7 +19,7 @@ A set of scripts to simulate the effect of surface processes on surface ruptures
     - [ ] Output 3: evolution of measured fault zone width over time (meters)
     - [ ] Output 3: difference in DEM elevations between time t and time 0 (coseismic)
     - [ ] Output 4: distribution of slopes in the landscape and their evolution over time, and computation of the degradation coefficient
-Includes option to save the outputs as pdf files for each DEM in a csv file compiling all measured line lengths and degradation coefficients. Must select yes in the first cell. This notebook must be ran first to produce the output csv files required for the other notebooks to run.
+Includes option to save the outputs as pdf files for each DEM in a csv file compiling all measured line lengths and degradation coefficients. Must select yes in the first cell. This notebook must be ran first to produce the output csv files required for the notebooks below to run.
 
 - [ ] degradation_coefficient_length_evolution_comparison.ipynb
     - [ ] Output 1: plot showing the evolution of degradation coefficient, line length, and fault zone width, for each model over time, each fit by different non-linear relationships.
