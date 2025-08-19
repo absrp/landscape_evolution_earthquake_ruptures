@@ -2,6 +2,8 @@
 ## About The Project
 A set of scripts to simulate the effect of surface processes on surface ruptures and quantify the information loss associated with landscape evolution over time. Includes options to simulate surface processes with linear and non-linear diffusion, implemented using open-access code landlab.
 
+<img width="832" height="282" alt="image" src="https://github.com/user-attachments/assets/9c0562f1-b446-40a5-953d-80bcb1039562" />
+
 ## Scripts contained
 - [ ] scarp_erosion_simulation_linear.ipynb
     - [ ] A script that inputs a DEM and, under the user's choice of diffusion conditions, using the linear landlab diffusion implementation, generates a synthetic DEM that has experienced landscape evolution over a  user-defined timescale. 
