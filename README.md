@@ -65,6 +65,8 @@ Email: alba@caltech.edu, amrodriguezpadilla@gmail.com
 
 Project Link: [https://github.com/absrp/landscape_evolution_earthquake_ruptures](https://github.com/absrp/landscape_evolution_earthquake_ruptures)
 
+Manuscript Link: Coming soon! Stay tuned.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- CONTRIBUTORS -->
