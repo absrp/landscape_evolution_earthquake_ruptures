@@ -63,7 +63,7 @@ The following data outputs are generated in the information_loss_bulk.ipynb note
 
 Please report suggestions and issues:
 
-Email: alba@caltech.edu, amrodriguezpadilla@gmail.com
+Email: alba.rodriguez@usu.edu, amrodriguezpadilla@gmail.com
 
 Project Link: [https://github.com/absrp/landscape_evolution_earthquake_ruptures](https://github.com/absrp/landscape_evolution_earthquake_ruptures)
 
