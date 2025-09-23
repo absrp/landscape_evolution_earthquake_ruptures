@@ -2,6 +2,7 @@ import numpy as np
 from landlab.plot.imshow import imshow_grid
 from landlab.io import read_esri_ascii
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import os
 import geopandas as gpd
 from matplotlib_scalebar.scalebar import ScaleBar
@@ -53,21 +54,68 @@ def plot_evolution_time_linear(
             if p * dt < dt:
                 ValueError("The total time is smaller than the time-step!!")
             #print(f"iteration {p}, time = {p * dt:.1f} years")  # for debugging
-            # plot hillshade
-            fig.sca(ax[plot_counter, 0])
+            # compute hillshade
             hillshade = mg.calc_hillshade_at_node(elevs=z, alt=30.0, az=100.0)
-            imshow_grid(mg, hillshade, cmap="gray", vmin=0, vmax=1)
-            ax[plot_counter, 0].set_xticklabels([])
-            ax[plot_counter, 0].set_yticklabels([])
+            hillshade_raster = mg.node_vector_to_raster(hillshade, flip_vertically=False)
+
+            # compute slope raster
+            slope_t = mg.calc_slope_at_node(z)
+            slope_t = np.array(slope_t)
+            slope_raster = mg.node_vector_to_raster(slope_t, flip_vertically=False)
+
+            # 68th percentile threshold
+            percentile_68 = np.percentile(slope_t[~np.isnan(slope_t)], 68)
+            mask = slope_raster >= percentile_68
+
+            # Compute slopes above 68th percentile
+            mask = slope_raster >= percentile_68
+
+            # Map these slopes to 68–100 percentile scale
+            slope_percentile = np.zeros_like(slope_raster)
+            slope_percentile[mask] = np.interp(
+                slope_raster[mask],                     # values to convert
+                (percentile_68, slope_raster[mask].max()),  # from min–max slope above 68th
+                (68, 100)                               # to percentiles
+            )
+
+            # Use slope_percentile to get colormap
+            cmap = cm.plasma
+            norm = plt.Normalize(vmin=68, vmax=100)
+            slope_colored = cmap(norm(slope_percentile))
+            slope_colored[..., -1] = (slope_percentile - 68) / (100 - 68) * 0.8  # alpha 0–0.6
+
+
+            # plot in column 1
+            ax[plot_counter, 0].imshow(
+                hillshade_raster,
+                cmap='gray',
+                origin='lower',
+                extent=extent_real,
+                zorder=1
+            )
+
+            ax[plot_counter, 0].imshow(
+                slope_colored,
+                origin='lower',
+                extent=extent_real,
+                zorder=2
+            )
             ax[plot_counter, 0].set_xticks([])
             ax[plot_counter, 0].set_yticks([])
-            ax[plot_counter, 0].set_ylabel("")
-            ax[plot_counter, 0].set_xlabel("")
-            ax[plot_counter, 0].set_aspect("equal")
-            colorbar = plt.gci().colorbar
-            colorbar.remove()
+            ax[plot_counter, 0].set_aspect('equal')
+            ax[plot_counter, 0].set_title(f"t = {p*dt:.0f} years", fontsize=6)
 
-            slope_t = mg.calc_slope_at_node(z)
+            if plot_counter == 0:
+                cbar = fig.colorbar(
+                    cm.ScalarMappable(cmap=cmap, norm=norm),
+                    ax=ax[plot_counter, 0],
+                    orientation='horizontal',  # horizontal colorbar under the plot
+                    fraction=0.04,            # width of the colorbar relative to the axes
+                    pad=0.06                   # distance from the axes
+                )
+                cbar.set_label("Slope percentile", fontsize=7)
+                cbar.ax.tick_params(labelsize=6)
+                cbar.set_ticks([68, 84, 95, 100])  # optional tick marks
 
             # plot elevation difference between t and t0
             zfin = z[mg.nodes]
