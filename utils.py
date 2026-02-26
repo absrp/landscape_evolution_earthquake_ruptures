@@ -268,6 +268,7 @@ def estimate_degradation_coefficient(slope_t0, slope_t, plot_counter, ax):
         label="Slopes at time t",
     )
     target_ax.set_title(r"$\phi$ = {:.2f}".format(deg_coeff), fontsize=6)
+    target_ax.set_ylabel('Frequency')
     return deg_coeff
 
 
