@@ -23,12 +23,9 @@ def plot_evolution_time_linear(
     initial_slopes,
     D=0.001,
 ):
-    fig, ax = plt.subplots(len(n_iter), 4, tight_layout=False, figsize=(5, 9), dpi=300)
+    fig, ax = plt.subplots(len(n_iter), 4, layout='constrained', figsize=(7.5, 10), dpi=300)
     # set overall title
     fig.suptitle(str(DEM))
-    plt.subplots_adjust(
-        left=0.05, right=0.95, top=0.95, bottom=0.1, wspace=0.05, hspace=0.1
-    )
 
     # to save in run
     coeff_t = []
@@ -40,6 +37,7 @@ def plot_evolution_time_linear(
     DEM_name = "DEMS/" + DEM + ".asc"
     mg, z = read_esri_ascii(DEM_name, name="topographic__elevation")
     mg.set_closed_boundaries_at_grid_edges(True, True, True, True)
+    extent_real = [mg.x_of_node.min(), mg.x_of_node.max(), mg.y_of_node.min(), mg.y_of_node.max()]
     slope_t0 = mg.calc_slope_at_node(z)
     slope_t0 = np.array(slope_t0)
     z_t0 = z[mg.nodes]
@@ -106,12 +104,11 @@ def plot_evolution_time_linear(
             ax[plot_counter, 0].set_title(f"t = {p*dt:.0f} years", fontsize=6)
 
             if plot_counter == 0:
+                cax0 = ax[0, 0].inset_axes([0.0, -0.14, 1.0, 0.07])
                 cbar = fig.colorbar(
                     cm.ScalarMappable(cmap=cmap, norm=norm),
-                    ax=ax[plot_counter, 0],
-                    orientation='horizontal',  # horizontal colorbar under the plot
-                    fraction=0.04,            # width of the colorbar relative to the axes
-                    pad=0.06                   # distance from the axes
+                    cax=cax0,
+                    orientation='horizontal',
                 )
                 cbar.set_label("Slope percentile", fontsize=7)
                 cbar.ax.tick_params(labelsize=6)
@@ -125,14 +122,13 @@ def plot_evolution_time_linear(
                 zchange, cmap="cividis", vmin=-0.8, vmax=0.8
             )
             if plot_counter == 0:
+                cax2 = ax[0, 2].inset_axes([0.0, -0.14, 1.0, 0.07])
                 fig.colorbar(
                     im,
-                    ax=ax[plot_counter, 2],
+                    cax=cax2,
                     label="$\Delta$ z (m)",
                     orientation="horizontal",
-                    fraction=0.036,
                 )
-            colorbar = plt.gci().colorbar
             ax[plot_counter, 2].set_yticks([])
             ax[plot_counter, 2].set_xticks([])
             slope_t = np.array(slope_t)
@@ -146,7 +142,7 @@ def plot_evolution_time_linear(
             ax[plot_counter, 0].set_title("t = %.0f years" % (p * dt), fontsize=6)
             years_t.append(p * dt)
             ax[plot_counter, 3].set_xlabel("Slope", fontsize=6)
-            ax[plot_counter, 3].set_ylabel("")
+            ax[plot_counter, 3].set_ylabel("Frequency", fontsize=6)
             ax[plot_counter, 3].set_yticks([])
             ax[plot_counter, 3].set_yscale("log")
             ax[plot_counter, 3].set_xlim([0, 1])
@@ -196,6 +192,21 @@ def plot_evolution_time_linear(
         z[mg.core_nodes] += dzdt[mg.core_nodes] * dt
 
     initial_slopes.append(slope_t0)
+
+    col_titles = [
+        "Degraded hillshade",
+        "Line length & Fault zone width",
+        "Elevation change",
+        "Slope change",
+    ]
+    for col, title in enumerate(col_titles):
+        ax[0, col].text(
+            0.5, 1.20, title,
+            transform=ax[0, col].transAxes,
+            ha='center', va='bottom', fontsize=8,
+            clip_on=False,
+        )
+
     scalebar = ScaleBar(
         0.5,
         units="m",
@@ -232,7 +243,7 @@ def plot_evolution_time_linear(
         DEMID = first_char + numeric_chars
 
         txtname = "Figures/" + DEMID + "_information_loss_analysis_linear.png"
-        plt.savefig(txtname)
+        plt.savefig(txtname, dpi=300, bbox_inches='tight')
 
     return line_length, line_width, coeff_t, years_t, initial_slopes
 
